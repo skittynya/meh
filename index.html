@@ -1,7 +1,272 @@
 <!DOCTYPE html>
-<html>
-  <head>
-       <title> I don't know what to type here </title>
-     </head>
-     <body> skitty likes men </body>
-  </html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>2x2 Collage Maker</title>
+<style>
+  :root{
+    --bg:#0f1724;
+    --card:#0b1220;
+    --accent:#7dd3fc;
+    --muted:#94a3b8;
+  }
+  html,body { height:100%; margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial; background:linear-gradient(180deg,#071028 0%,#07121a 100%); color: #e6eef8; }
+  .wrap {
+    min-height:100%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:28px;
+  }
+  .card {
+    width:100%;
+    max-width:920px;
+    background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+    border-radius:14px;
+    padding:18px;
+    box-shadow: 0 8px 30px rgba(2,6,23,0.6);
+    border:1px solid rgba(255,255,255,0.03);
+  }
+  h1 { margin:6px 0 12px 0; font-size:20px; letter-spacing:0.4px; }
+  p { margin:6px 0 14px 0; color:var(--muted); font-size:13px; }
+  .controls {
+    display:flex;
+    gap:12px;
+    flex-wrap:wrap;
+    align-items:center;
+    margin-bottom:14px;
+  }
+  .file-input {
+    display:flex;
+    gap:8px;
+    align-items:center;
+  }
+  input[type="file"] { display:none; }
+  .btn {
+    background:transparent;
+    border:1px solid rgba(255,255,255,0.06);
+    padding:10px 12px;
+    border-radius:8px;
+    color:inherit;
+    cursor:pointer;
+    font-weight:600;
+    transition:all .14s;
+  }
+  .btn:hover { transform:translateY(-2px); box-shadow:0 6px 18px rgba(0,0,0,0.35); }
+  .primary { background:linear-gradient(90deg,var(--accent),#60a5fa); color:#041226; border:none; }
+  .small { padding:8px 10px; font-size:13px; }
+  .preview {
+    display:grid;
+    grid-template-columns:repeat(2, 1fr);
+    gap:8px;
+    margin-bottom:12px;
+  }
+  .preview .slot {
+    width:100%;
+    aspect-ratio:1/1;
+    background:rgba(255,255,255,0.02);
+    border-radius:8px;
+    overflow:hidden;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    color:var(--muted);
+    font-size:13px;
+  }
+  .preview img { width:100%; height:100%; object-fit:cover; display:block; }
+  canvas { display:block; margin:10px auto; border-radius:10px; background:#000; max-width:100%; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .hint { font-size:12px; color:var(--muted); margin-left:6px; }
+  footer { margin-top:12px; text-align:center; color:var(--muted); font-size:12px; }
+  @media (max-width:520px){
+    .preview { gap:6px; }
+    .card { padding:12px; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card" role="main">
+      <h1>2×2 Collage Maker</h1>
+      <p>Upload up to <strong>4 images</strong>. They will be placed in a 2×2 grid. You can reorder by selecting images in another slot. Click <strong>Generate Collage</strong> and then <strong>Download</strong>.</p>
+
+      <div class="controls">
+        <label class="btn file-input">
+          <span class="small">Choose Images</span>
+          <input id="files" type="file" accept="image/*" multiple>
+        </label>
+
+        <button id="gen" class="btn primary small">Generate Collage</button>
+        <a id="downloadBtn" class="btn small" style="display:none" download="collage.png">Download</a>
+
+        <div style="flex:1"></div>
+        <button id="clear" class="btn small">Clear</button>
+      </div>
+
+      <div class="preview" id="preview">
+        <div class="slot" data-index="0">Slot 1</div>
+        <div class="slot" data-index="1">Slot 2</div>
+        <div class="slot" data-index="2">Slot 3</div>
+        <div class="slot" data-index="3">Slot 4</div>
+      </div>
+
+      <canvas id="canvas" width="800" height="800" style="display:none"></canvas>
+
+      <div class="row">
+        <label class="hint">Canvas size:</label>
+        <select id="size" class="btn small" style="margin-left:6px">
+          <option value="600">600 × 600</option>
+          <option value="800" selected>800 × 800</option>
+          <option value="1000">1000 × 1000</option>
+        </select>
+
+        <label class="hint" style="margin-left:12px">Gap (px):</label>
+        <input id="gap" type="number" value="8" min="0" max="100" style="width:70px; margin-left:6px; padding:8px; border-radius:8px; border:1px solid rgba(255,255,255,0.06); background:transparent; color:inherit;">
+      </div>
+
+      <footer>
+        Tip: If you upload fewer than 4 images, empty slots remain blank (background color). Works offline in your browser.
+      </footer>
+    </div>
+  </div>
+
+<script>
+  const filesInput = document.getElementById('files');
+  const preview = document.getElementById('preview');
+  const genBtn = document.getElementById('gen');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const clearBtn = document.getElementById('clear');
+  const sizeSelect = document.getElementById('size');
+  const gapInput = document.getElementById('gap');
+
+  // store up to 4 image objects
+  const slots = [null, null, null, null];
+
+  // helper: create an <img> from file and return Promise when loaded
+  function fileToImage(file) {
+    return new Promise((res, rej) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => { URL.revokeObjectURL(url); res(img); };
+      img.onerror = (e) => { URL.revokeObjectURL(url); rej(e); };
+      img.src = url;
+    });
+  }
+
+  // when user selects files (multiple). We fill slots left-to-right
+  filesInput.addEventListener('change', async (ev) => {
+    const files = Array.from(ev.target.files).slice(0,4);
+    for (let i=0;i<4;i++){
+      if (files[i]) {
+        try {
+          const img = await fileToImage(files[i]);
+          slots[i] = img;
+        } catch(e) {
+          console.warn('image load error', e);
+        }
+      }
+    }
+    renderPreview();
+  });
+
+  // render preview grid
+  function renderPreview(){
+    preview.querySelectorAll('.slot').forEach((el) => {
+      const idx = Number(el.dataset.index);
+      el.innerHTML = '';
+      if (slots[idx]) {
+        const img = slots[idx];
+        const clone = document.createElement('img');
+        clone.src = img.src;
+        el.appendChild(clone);
+      } else {
+        el.textContent = 'Slot ' + (idx+1);
+      }
+    });
+  }
+
+  // allow clicking each slot to replace image via file picker
+  preview.addEventListener('click', (e) => {
+    const slotEl = e.target.closest('.slot');
+    if (!slotEl) return;
+    const idx = Number(slotEl.dataset.index);
+    const picker = document.createElement('input');
+    picker.type = 'file';
+    picker.accept = 'image/*';
+    picker.onchange = async (ev) => {
+      const f = ev.target.files && ev.target.files[0];
+      if (!f) return;
+      try {
+        const img = await fileToImage(f);
+        slots[idx] = img;
+        renderPreview();
+      } catch(err) { console.warn(err); }
+    };
+    picker.click();
+  });
+
+  // clear
+  clearBtn.addEventListener('click', () => {
+    for (let i=0;i<4;i++) slots[i]=null;
+    filesInput.value = '';
+    renderPreview();
+    downloadBtn.style.display = 'none';
+    canvas.style.display = 'none';
+  });
+
+  // generate collage
+  genBtn.addEventListener('click', () => {
+    const S = parseInt(sizeSelect.value,10) || 800;
+    const gap = Math.max(0, Math.min(100, Number(gapInput.value) || 8));
+    canvas.width = S;
+    canvas.height = S;
+    const bg = '#0b1220';
+    ctx.fillStyle = bg;
+    ctx.fillRect(0,0,S,S);
+
+    const cell = Math.floor((S - gap) / 2);
+    // compute positions for 4 slots: [0,0] [cell+gap,0] [0,cell+gap] [cell+gap,cell+gap]
+    const positions = [
+      {x:0, y:0},
+      {x:cell + gap, y:0},
+      {x:0, y:cell + gap},
+      {x:cell + gap, y:cell + gap}
+    ];
+
+    // draw each image centered and cropped to fill cell (cover)
+    for (let i=0;i<4;i++){
+      const img = slots[i];
+      const pos = positions[i];
+      // fill background for the cell (optional)
+      ctx.fillStyle = '#0b1220';
+      ctx.fillRect(pos.x, pos.y, cell, cell);
+
+      if (!img) continue;
+
+      // compute cover fit
+      const iw = img.width, ih = img.height;
+      const scale = Math.max(cell/iw, cell/ih);
+      const w = iw * scale, h = ih * scale;
+      const dx = pos.x + (cell - w)/2;
+      const dy = pos.y + (cell - h)/2;
+
+      ctx.drawImage(img, dx, dy, w, h);
+    }
+
+    canvas.style.display = 'block';
+    downloadBtn.style.display = 'inline-block';
+    // set download link
+    canvas.toBlob(blob => {
+      const url = URL.createObjectURL(blob);
+      downloadBtn.href = url;
+    }, 'image/png');
+  });
+
+  // initial render
+  renderPreview();
+</script>
+</body>
+</html>
